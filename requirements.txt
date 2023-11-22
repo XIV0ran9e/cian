@@ -1,0 +1,8 @@
+psycopg2-binary
+python-dotenv
+SQLAlchemy
+numpy
+pandas
+scikit-learn
+catboost
+cianparser
