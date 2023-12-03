@@ -8,6 +8,7 @@ import pandas as pd
 import pickle
 import cianparser
 
+from pathlib import Path
 import glob
 import os
 
@@ -50,26 +51,20 @@ _LOG.addHandler(logging.StreamHandler())
 def init() -> None:
     _LOG.info("Pipeline started.")
     
-# def parse_data_to_csv(): -> None:
-#     start_page = 1
-#     for i in range(6):
-#         data = cianparser.parse(
-#             deal_type="sale",
-#             accommodation_type="flat",
-#             location="Москва",
-#             rooms="all",
-#             start_page=start_page,
-#             end_page=start_page + 10,
-#             is_saving_csv=False,
-#             is_express_mode=True
-#         )
-#         start_page += 10
-#     return None
+def change_folder_to_common():
+    path = Path("/opt/airflow/files")
+    if not path.exists():
+        os.mkdir(path)
+    os.chdir(path)    
 
     
 def parse_data_to_csv() -> None:
+    change_folder_to_common()
+    # for filename in glob.glob('cian*csv'):
+    #     os.remove("/opt/airflow/files/" + filename)
+    
     start_page = 1
-    for i in range(2):
+    for _ in range(2):
         data = cianparser.parse(
             deal_type="sale",
             accommodation_type="flat",
@@ -77,16 +72,29 @@ def parse_data_to_csv() -> None:
             rooms="all",
             start_page=start_page,
             end_page=start_page + 10,
-            is_saving_csv=False,
+            is_saving_csv=True,
             is_express_mode=True
         )
         start_page += 1
+        
+    with open("result.csv", "w", encoding="UTF-8") as file:
+        with open(glob.glob('cian*csv')[0], "r", encoding="UTF-8") as read_file:
+            data = read_file.readlines()[:1]
+            file.write(data[0])
+    
+        for filename in glob.glob('cian*csv'):
+            with open(filename, "r", encoding="UTF-8") as read_file:
+                data = read_file.readlines()[1:]
+            for _d in data:
+                file.write(_d)
     return None
 
 
 def prepare_data() -> None:
+    change_folder_to_common()
+
     # Последний .csv файл в директории
-    latest_file = max(glob.glob('cian*.csv'), key=os.path.getctime)
+    latest_file = "result.csv" # max(glob.glob('cian*.csv'), key=os.path.getctime)
     
     # Загрузка данных
     raw = pd.read_csv(latest_file, sep=';') 
@@ -124,15 +132,18 @@ def insert_data() -> None:
     # Использовать созданный ранее PG connection
     #pg_hook = PostgresHook('pg_connection')
     #con = pg_hook.get_conn()
-    
+    change_folder_to_common()
+
     # Получим чистые данные
     data = pd.read_csv(max(glob.glob('clean*.csv'), key=os.path.getctime))
     
     # connection
+    
     postgres_sql_upload = PostgresHook(postgres_conn_id='pg_connection' #, 
                                        #schema='airflow_db'
                                       ) 
-    postgres_sql_upload.insert_rows('flats_cleaned', rows=data)
+    #postgres_sql_upload.insert_rows('flats_cleaned', rows=data)
+    data.to_sql('flats_clean', postgres_sql_upload.get_sqlalchemy_engine(), if_exists='replace', chunksize=1000)
 
     # Прочитать все данные из таблицы california_housing
     # data = pd.read_sql_query('select * from california_housing', con)
@@ -141,12 +152,12 @@ def insert_data() -> None:
 
 def train_model() -> None:
    #TO-DO: Заполнить все шаги
-    
+    change_folder_to_common()
     # Использовать созданный ранее PG connection
     pg_hook = PostgresHook('pg_connection')
-    con = pg_hook.get_conn()
+    #con = pg_hook.get_conn()
     # Прочитать все данные из таблицы airflow_db
-    df = pd.read_sql_query('select * from airflow_db', con)
+    df = pd.read_sql_query('select * from flats_clean fc where fc.date = (select max(date) from flats_clean)', pg_hook.get_sqlalchemy_engine())
     
     # X, y
     X_c = df.drop(['price', 'price_per_m2', 'date'], axis=1)
@@ -164,7 +175,7 @@ def train_model() -> None:
     _LOG.info("-"*10)
     _LOG.info("METRICS:")
     _LOG.info(f"R^2: {r2_score(y_test, y_pred_cat)}")
-    _LOG.info(F'explained_variance_score: {explained_variance_score(y_test, y_pred)}')
+    _LOG.info(F'explained_variance_score: {explained_variance_score(y_test, y_pred_cat)}')
     _LOG.info(F'MAE: {mean_absolute_error(y_test, y_pred_cat)}')
     _LOG.info("-"*10)
     
