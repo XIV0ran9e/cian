@@ -60,11 +60,9 @@ def change_folder_to_common():
     
 def parse_data_to_csv() -> None:
     change_folder_to_common()
-    # for filename in glob.glob('cian*csv'):
-    #     os.remove("/opt/airflow/files/" + filename)
-    
+
     start_page = 1
-    for _ in range(2):
+    for _ in range(1):
         data = cianparser.parse(
             deal_type="sale",
             accommodation_type="flat",
@@ -94,13 +92,13 @@ def prepare_data() -> None:
     change_folder_to_common()
 
     # Последний .csv файл в директории
-    latest_file = "result.csv" # max(glob.glob('cian*.csv'), key=os.path.getctime)
+    latest_file = "result.csv"
     
     # Загрузка данных
     raw = pd.read_csv(latest_file, sep=';') 
     
     # Предобработка
-    # даление дубликатов, пропусков и некорректных данных, формирование итогового датасета
+    # Удаление дубликатов, пропусков и некорректных данных, формирование итогового датасета
     raw = raw.dropna()
     raw = raw.drop_duplicates (subset=['price', 'residential_complex', 'street', 'house_number'])
     
@@ -129,25 +127,14 @@ def prepare_data() -> None:
     return None
 
 def insert_data() -> None:
-    # Использовать созданный ранее PG connection
-    #pg_hook = PostgresHook('pg_connection')
-    #con = pg_hook.get_conn()
     change_folder_to_common()
 
     # Получим чистые данные
     data = pd.read_csv(max(glob.glob('clean*.csv'), key=os.path.getctime))
     
     # connection
-    
-    postgres_sql_upload = PostgresHook(postgres_conn_id='pg_connection' #, 
-                                       #schema='airflow_db'
-                                      ) 
-    #postgres_sql_upload.insert_rows('flats_cleaned', rows=data)
+    postgres_sql_upload = PostgresHook(postgres_conn_id='pg_connection') 
     data.to_sql('flats_clean', postgres_sql_upload.get_sqlalchemy_engine(), if_exists='replace', chunksize=1000)
-
-    # Прочитать все данные из таблицы california_housing
-    # data = pd.read_sql_query('select * from california_housing', con)
-
     
 
 def train_model() -> None:
@@ -180,14 +167,9 @@ def train_model() -> None:
     _LOG.info("-"*10)
     
     cat.save_model('model_' + datetime.now().strftime("%d-%m-%Y_%H-%M-%S") + '.json')
-    
-    # connection
-    #postgres_sql_upload = PostgresHook(postgres_conn_id='pg_connection' #, 
-    #                                   #schema='airflow_db'
-    #                                  ) 
-    #postgres_sql_upload.insert_rows('flats_cleaned', data)
+
     _LOG.info("Success.")
-    
+
 
 
 task_init = PythonOperator(task_id='init', python_callable=init, dag=dag) 
@@ -200,7 +182,7 @@ task_insert_data = PythonOperator(task_id='insert_data', python_callable=insert_
 
 task_train_model = PythonOperator(task_id='train_model', python_callable=train_model, dag=dag)
 
-#TO-DO: Архитектура DAG'а
+# Архитектура DAG'а
 task_init >> task_parse_data_to_csv >> task_prepare_data >> task_insert_data >> task_train_model
 
 

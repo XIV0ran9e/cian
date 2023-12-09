@@ -32,7 +32,6 @@ x-airflow-common:
 
   env_file:
     - ./.env
-  # user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
   mem_limit: 4000m
   depends_on:
     redis:
@@ -43,6 +42,22 @@ x-airflow-common:
     - etl_network
 
 services:
+  telegram_bot:
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - BOT_PG_ADDRESS=${BOT_PG_ADDRESS}
+      - BOT_PG_PORT=${BOT_PG_PORT}
+      - BOT_PG_DB=${BOT_PG_DB}
+      - BOT_PG_USER=${BOT_PG_USER}
+      - BOT_PG_PASSWORD=${BOT_PG_PASSWORD}
+    build:
+      context: ./tgbot/
+      dockerfile: Dockerfile
+    volumes:
+      - ./files:/opt/files
+    command:
+      sh -c "python3 bot.py"
+
   jupyter_notebook:
     image: "jupyter/minimal-notebook"
     container_name: ${CONTAINER_NAME:-jupyter_notebook}

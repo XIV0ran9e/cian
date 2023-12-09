@@ -1,5 +1,7 @@
 /venv
+/files/*
 /logs/*
+/jupyter_lab
 *.csv
 # Byte-compiled / optimized / DLL files
 __pycache__/
